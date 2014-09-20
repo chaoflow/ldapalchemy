@@ -1,6 +1,7 @@
 *.egg-info
 *.egg-link
 *.py[co]
+__pycache__
 /.cache
 /.env
 /.installed.cfg

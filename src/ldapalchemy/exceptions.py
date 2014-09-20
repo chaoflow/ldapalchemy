@@ -1,28 +1,51 @@
-"""Exceptions for  errors
+"""Exceptions for LDAP errors
 
-Taken in blocks from ldap.h as experienced.
+There might be exceptions in here that should not be exceptions, but
+are result codes one should test for as an expected result code before
+raising an exception.
+
+Examples of such non-zero result codes are LDAP_COMPARE_FALSE and
+LDAP_COMPARE_TRUE.
 
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from ._libldap import libldap
+from .libldap import ffi, libldap
 
 
 class Error(Exception):
-    def __init__(self, info=None):
-        self.info = info
+    def __init__(self, ld=ffi.NULL, ldvalid=False):
+        self.msgs = []
+
+        try:
+            self.msgs.append(ffi.string(libldap.ldap_err2string(self.code)))
+        except:
+            self.msgs.append("Error resolving error code '%s'" % self.code)
+
+        # XXX
+        #
+        # The LDAP struct is opaque. We need a way to check whether ld
+        # is a valid connection, otherwise the get_option call crashes
+        # with an assertion error
+        #
+        # An alternative would be to get a diagnostic message only if
+        # sensible. Let's keep an eye on what kind of messages we get.
+        #
+        # For InvalidDNSyntax err2string return 'Invalid DN Syntax'
+        # and diag returns 'invalid DN'. Both don't deliver
+        # information beyond the exception name.
+        if ldvalid and ld != ffi.NULL:
+            diagp = ffi.new('char **')
+            libldap.ldap_get_option(ld, libldap.LDAP_OPT_DIAGNOSTIC_MESSAGE,
+                                    diagp)
+            if diagp[0] != ffi.NULL:
+                self.msgs.append(ffi.string(diagp[0]))
+                libldap.ldap_memfree(diagp[0])
 
     @property
     def msg(self):
-        # XXX: untangle this
-        try:
-            msg = libldap.ldap_err2string(self.code)
-        except:
-            msg = "Error resolving error code '%s'" % self.code
-        if self.info:
-            msg = "%s\n  %s" % (msg, self.info)
-        return msg
+        return '\n  '.join(self.msgs)
 
     def __str__(self):
         return self.msg
@@ -34,55 +57,47 @@ class YetUnspecified(Error):
 
 
 class OperationsError(Error):
-    code = 0x01
+    code = libldap.LDAP_OPERATIONS_ERROR
 
 
 class ProtocolError(Error):
-    code = 0x02
+    code = libldap.LDAP_PROTOCOL_ERROR
 
 
 class TimelimitExceeded(Error):
-    code = 0x03
+    code = libldap.LDAP_TIMELIMIT_EXCEEDED
 
 
 class SizelimitExceeded(Error):
-    code = 0x04
-
-
-class CompareFalse(Error):
-    code = 0x05
-
-
-class CompareTrue(Error):
-    code = 0x06
+    code = libldap.LDAP_SIZELIMIT_EXCEEDED
 
 
 class AuthMethodNotSupported(Error):
-    code = 0x07
+    code = libldap.LDAP_AUTH_METHOD_NOT_SUPPORTED
 
 
 class StrongAuthRequired(Error):
-    code = 0x08
+    code = libldap.LDAP_STRONG_AUTH_REQUIRED
 
 
 class Referral(Error):
-    code = 0x0a
+    code = libldap.LDAP_REFERRAL
 
 
 class AdminlimitExceeded(Error):
-    code = 0x0b
+    code = libldap.LDAP_ADMINLIMIT_EXCEEDED
 
 
 class UnavailableCriticalExtension(Error):
-    code = 0x0c
+    code = libldap.LDAP_UNAVAILABLE_CRITICAL_EXTENSION
 
 
 class ConfidentialityRequired(Error):
-    code = 0x0d
+    code = libldap.LDAP_CONFIDENTIALITY_REQUIRED
 
 
 class SaslBindInProgress(Error):
-    code = 0x0e
+    code = libldap.LDAP_SASL_BIND_IN_PROGRESS
 
 
 class AttrError(Error):
@@ -90,27 +105,27 @@ class AttrError(Error):
 
 
 class NoSuchAttribute(AttrError):
-    code = 0x10
+    code = libldap.LDAP_NO_SUCH_ATTRIBUTE
 
 
 class UndefinedType(AttrError):
-    code = 0x11
+    code = libldap.LDAP_UNDEFINED_TYPE
 
 
 class InappropriateMatching(AttrError):
-    code = 0x12
+    code = libldap.LDAP_INAPPROPRIATE_MATCHING
 
 
 class ConstraintViolation(AttrError):
-    code = 0x13
+    code = libldap.LDAP_CONSTRAINT_VIOLATION
 
 
 class TypeOrValueExists(AttrError):
-    code = 0x14
+    code = libldap.LDAP_TYPE_OR_VALUE_EXISTS
 
 
 class InvalidSyntax(AttrError):
-    code = 0x15
+    code = libldap.LDAP_INVALID_SYNTAX
 
 
 class NameError(Error):
@@ -118,39 +133,39 @@ class NameError(Error):
 
 
 class NoSuchObject(NameError):
-    code = 0x20
+    code = libldap.LDAP_NO_SUCH_OBJECT
 
 
 class AliasProblem(NameError):
-    code = 0x21
+    code = libldap.LDAP_ALIAS_PROBLEM
 
 
 class InvalidDNSyntax(NameError):
-    code = 0x22
+    code = libldap.LDAP_INVALID_DN_SYNTAX
 
 
 class AliasDerefProblem(NameError):
-    code = 0x24
+    code = libldap.LDAP_ALIAS_DEREF_PROBLEM
 
 
 class SecurityError(Error):
     pass
 
 
-class ProxyAuthzFailure(SecurityError):
-    code = 0x2F
+class XProxyAuthzFailure(SecurityError):
+    code = libldap.LDAP_X_PROXY_AUTHZ_FAILURE
 
 
 class InappropriateAuth(SecurityError):
-    code = 0x30
+    code = libldap.LDAP_INAPPROPRIATE_AUTH
 
 
 class InvalidCredentials(SecurityError):
-    code = 0x31
+    code = libldap.LDAP_INVALID_CREDENTIALS
 
 
 class InsufficientAccess(SecurityError):
-    code = 0x32
+    code = libldap.LDAP_INSUFFICIENT_ACCESS
 
 
 class ServiceError(Error):
@@ -158,19 +173,55 @@ class ServiceError(Error):
 
 
 class Busy(ServiceError):
-    code = 0x33
+    code = libldap.LDAP_BUSY
 
 
 class Unavailable(ServiceError):
-    code = 0x34
+    code = libldap.LDAP_UNAVAILABLE
 
 
 class UnwillingToPerform(ServiceError):
-    code = 0x35
+    code = libldap.LDAP_UNWILLING_TO_PERFORM
 
 
 class LoopDetect(ServiceError):
-    code = 0x36
+    code = libldap.LDAP_LOOP_DETECT
+
+
+class UpdateError(Error):
+    pass
+
+
+class NamingViolation(UpdateError):
+    code = libldap.LDAP_NAMING_VIOLATION
+
+
+class ObjectClassViolation(UpdateError):
+    code = libldap.LDAP_OBJECT_CLASS_VIOLATION
+
+
+class NotAllowedOnNonleaf(UpdateError):
+    code = libldap.LDAP_NOT_ALLOWED_ON_NONLEAF
+
+
+class NotAllowedOnRDN(UpdateError):
+    code = libldap.LDAP_NOT_ALLOWED_ON_RDN
+
+
+class AlreadyExists(UpdateError):
+    code = libldap.LDAP_ALREADY_EXISTS
+
+
+class NoObjectClassMods(UpdateError):
+    code = libldap.LDAP_NO_OBJECT_CLASS_MODS
+
+
+class ResultsTooLarge(UpdateError):
+    code = libldap.LDAP_RESULTS_TOO_LARGE
+
+
+class AffectsMultipleDSAs(UpdateError):
+    code = libldap.LDAP_AFFECTS_MULTIPLE_DSAS
 
 
 class APIError(Error):
@@ -178,73 +229,68 @@ class APIError(Error):
 
 
 class ServerDown(APIError):
-    code = -1
+    code = libldap.LDAP_SERVER_DOWN
 
 
 class LocalError(APIError):
-    code = -2
+    code = libldap.LDAP_LOCAL_ERROR
 
 
 class EncodingError(APIError):
-    code = -3
+    code = libldap.LDAP_ENCODING_ERROR
 
 
 class DecodingError(APIError):
-    code = -4
+    code = libldap.LDAP_DECODING_ERROR
 
 
 class Timeout(APIError):
-    code = -5
+    code = libldap.LDAP_TIMEOUT
 
 
 class AuthUnknown(APIError):
-    code = -6
+    code = libldap.LDAP_AUTH_UNKNOWN
 
 
 class FilterError(APIError):
-    code = -7
+    code = libldap.LDAP_FILTER_ERROR
 
 
 class UserCancelled(APIError):
-    code = -8
+    code = libldap.LDAP_USER_CANCELLED
 
 
 class ParamError(APIError):
-    code = -9
+    code = libldap.LDAP_PARAM_ERROR
 
 
 class NoMemory(APIError):
-    code = -10
+    code = libldap.LDAP_NO_MEMORY
 
 
 class ConnectError(APIError):
-    code = -11
+    code = libldap.LDAP_CONNECT_ERROR
 
 
 class NotSupported(APIError):
-    code = -12
+    code = libldap.LDAP_NOT_SUPPORTED
 
 
 class ControlNotFound(APIError):
-    code = -13
+    code = libldap.LDAP_CONTROL_NOT_FOUND
 
 
 class NoResultsReturned(APIError):
-    code = -14
-
-
-# obsolete according to ldap.h
-class MoreResultsToReturn(APIError):
-    code = -15
+    code = libldap.LDAP_NO_RESULTS_RETURNED
 
 
 class ClientLoop(APIError):
-    code = -16
+    code = libldap.LDAP_CLIENT_LOOP
 
 
 class ReferralLimitExceeded(APIError):
-    code = -17
+    code = libldap.LDAP_REFERRAL_LIMIT_EXCEEDED
 
 
 class XConnecting(APIError):
-    code = -18
+    code = libldap.LDAP_X_CONNECTING

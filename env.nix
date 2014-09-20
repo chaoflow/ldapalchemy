@@ -4,7 +4,8 @@ let
     python.site {
       name = "ldapalchemy-dev";
       wheels = with python.wheels;
-        [ click
+        [ cffi
+          click
           colorama
           ipdb
           plumbum

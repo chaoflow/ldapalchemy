@@ -1,7 +1,9 @@
-# find libldap.so in library path
+# ldap.h and libldap_r.so
 export LD_LIBRARY_PATH := ${abspath ./env/lib}
+export LIBRARY_PATH := ${LD_LIBRARY_PATH}
+export C_INCLUDE_PATH := ${abspath ./env/include}
 
-# find slapd, slapadd and virtualenvX.Y in PATH
+# slapd, slapadd and virtualenvX.Y in PATH
 export PATH := ${abspath ./env/sbin}:${abspath ./env/bin}:${abspath ./env/libexec}:${PATH}
 
 # loglevels for SLAPD_LOGLEVEL, comma-separated
@@ -22,7 +24,22 @@ export SLAPD_LOGLEVEL := stats conns
 
 all: tests test-noplone
 
-
+bootstrap-no-nix:
+	virtualenv-2.7 venv27
+	./venv27/bin/pip install zc.buildout==1.7.1
+	./venv27/bin/pip install \
+          click \
+          colorama \
+          ipdb \
+          plumbum \
+          py \
+          pytest \
+          pytest-cache \
+          pytest-pep8 \
+          pytest-flakes
+	./venv27/bin/python setup.py develop
+	touch .env
+	touch .venv27
 
 # All dependencies are provided via an nix environment. If your
 # environment provides them already, simply 'touch .env' and the nix
@@ -41,27 +58,8 @@ all: tests test-noplone
 # mode. All python dependencies are taken from the "system" python,
 # i.e. the python the virtualenvs are installed in.
 
-.venv27: venv27-nonix
-
-venv27-nonix:
-	virtualenv-2.7 venv27
-	./venv27/bin/pip install grako zc.buildout==1.7.1
-	./venv27/bin/pip install \
-          click \
-          colorama \
-          ipdb \
-          plumbum \
-          py \
-          pytest \
-          pytest-cache \
-          pytest-pep8 \
-          pytest-flakes
-	./venv27/bin/python setup.py develop
-	touch .venv27
-
-venv27-nix: .env
+.venv27: .env
 	virtualenv2.7 --system-site-packages venv27
-	./venv27/bin/python ../grako/setup.py develop
 	./venv27/bin/python setup.py develop
 	sed -e 's,#!.*,#!./venv27/bin/python,' <./env/bin/py.test-2.7 >./venv27/bin/py.test
 	sed -e 's,#!.*,#!./venv27/bin/python,' <./env/bin/buildout >./venv27/bin/buildout
@@ -75,8 +73,6 @@ venv27-nix: .env
 # 	sed -e 's,#!.*,#!./venv34/bin/python,' <./env/bin/py.test-3.4 >./venv34/bin/py.test
 # 	chmod +x ./venv34/bin/py.test
 # 	touch .venv34
-
-
 
 
 
@@ -129,18 +125,6 @@ test-noplone: bin/test
 	make kill-remaining-slapd
 
 
-# Parse ldap.h and ldap_log.h to a python file, with cffi this should
-# not be needed anymore.
-
-generate_defines/_parser.py: generate_defines/ldaph.ebnf
-	cd generate_defines; $(MAKE) $(MFLAGS)
-
-src/ldapalchemy/_defines.py: generate_defines/_parser.py
-	./venv27/bin/python -m generate_defines ./env/include/ldap.h > $@
-	./venv27/bin/python -m generate_defines ./env/src/openldap-*/include/ldap_log.h >> $@
-	./venv27/bin/python $@
-
-
 
 # Take schema files from slapd in nix environment, schema files are
 # checked into the repository, this is only used to update to newer
@@ -160,10 +144,6 @@ self-signed-cert:
 	openssl req -new -x509 -key etc/openldap/key.pem -out etc/openldap/cert.pem -days 10950
 
 
+
 clean:
 	git clean -Xdf
-
-
-# temporary hack anyway, hopefully gone with cffi.
-
-.PHONY: src/ldapalchemy/_defines.py kill-remaining-slapd

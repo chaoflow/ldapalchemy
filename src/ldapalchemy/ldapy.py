@@ -1,12 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import ctypes as ct
-
 from . import exceptions as excs
 
-from ._defines import *
 from .exceptions import *
-from ._libldap import libldap
+from .libldap import ffi, libldap
 
 
 ERRORS = dict((exc.code, exc) for exc in
@@ -14,11 +11,16 @@ ERRORS = dict((exc.code, exc) for exc in
               if hasattr(exc, 'code'))
 
 
-def error(rc, *args, **kw):
+def error(rc, ld=ffi.NULL, ldvalid=True):
     try:
-        return ERRORS[rc](*args, **kw)
+        e = ERRORS[rc](ld=ld, ldvalid=ldvalid)
     except KeyError:
-        return excs.YetUnspecified(rc)
+        e = excs.YetUnspecified(rc)
+
+    if ldvalid and ld != ffi.NULL:
+        libldap.ldap_unbind(ld)
+
+    raise e
 
 
 def initialize(uri=None, start_tls=True):
@@ -27,7 +29,6 @@ def initialize(uri=None, start_tls=True):
     Return an ldap session handle or raise an LDAPError.
 
     """
-    ld = ct.c_void_p()
     if uri is not None:
         uri = uri.encode('utf-8')
 
@@ -35,11 +36,11 @@ def initialize(uri=None, start_tls=True):
     start_tls = start_tls and uri and uri.startswith('ldap:')
 
     # initialize connection
-    rc = libldap.ldap_initialize(ct.byref(ld), uri)
-    if rc != 0:
-        if ld.value is not None:
-            libldap.ldap_unbind(ld)
-        raise error(rc)
+    ldp = ffi.new('LDAP **')
+    rc = libldap.ldap_initialize(ldp, uri if uri is not None else ffi.NULL)
+    ld = ldp[0]
+    if rc != libldap.LDAP_SUCCESS:
+        raise error(rc, ld, ldvalid=False)
 
     # wrap options properly so they can be passed to initialize
     #
@@ -50,49 +51,35 @@ def initialize(uri=None, start_tls=True):
     # argue to stick here as close as possible to the C API
 
     # enable logging
-    set_option(ld, LDAP_OPT_DEBUG_LEVEL, LDAP_DEBUG_ANY)
+    set_option(ld, libldap.LDAP_OPT_DEBUG_LEVEL, libldap.LDAP_DEBUG_ANY)
 
     # switch to LDAPv3
-    set_option(ld, LDAP_OPT_PROTOCOL_VERSION, LDAP_VERSION3)
+    set_option(ld, libldap.LDAP_OPT_PROTOCOL_VERSION, libldap.LDAP_VERSION3)
 
     if start_tls:
-        # Don't validate server certificate, i.e. allow self-signed
-        # XXX: does not work, using ldaprc for now
-        # set_option(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_ALLOW)
-        serverctrls = None
-        clientctrls = None
-        rc = libldap.ldap_start_tls_s(ld, serverctrls, clientctrls)
-        if rc != 0:
-            msg = ct.c_char_p()
-            libldap.ldap_get_option(ld, LDAP_OPT_DIAGNOSTIC_MESSAGE, ct.byref(msg))
-            info = msg.value
-            libldap.ldap_memfree(msg)
-            libldap.ldap_unbind(ld)
-            raise error(rc, info=info)
+        rc = libldap.ldap_start_tls_s(ld, ffi.NULL, ffi.NULL)
+        if rc != libldap.LDAP_SUCCESS:
+            raise error(rc, ld)
 
     return ld
 
 
-# def get_option(ld, opt):
-#     value = ct.c_void_p()
-#     rc = libldap.ldap_get_option(ld, opt, value)
-#     if rc != 0:
-#         libldap.ldap_unbind(ld)
-#         raise error(rc)
-#     return value
-
-
 def set_option(ld, opt, value):
-    rc = libldap.ldap_set_option(ld, opt, ct.byref(value))
-    if rc != 0:
-        libldap.ldap_unbind(ld)
-        raise error(rc)
+    if type(value) is int:
+        ctype = 'int *'
+    else:
+        raise TypeError('%s not supported (yet)' % type(value))
+    valuep = ffi.new(ctype)
+    valuep[0] = value
+    rc = libldap.ldap_set_option(ld, opt, valuep)
+    if rc != libldap.LDAP_SUCCESS:
+        raise error(rc, ld)
 
 
 def simple_bind_s(ld, dn, pw):
     rc = libldap.ldap_simple_bind_s(ld, dn.encode('utf-8'), pw.encode('utf-8'))
-    if rc != 0:
-        libldap.ldap_unbind(ld)
-        raise error(rc)
+    if rc != libldap.LDAP_SUCCESS:
+        raise error(rc, ld)
+
 
 unbind = libldap.ldap_unbind
