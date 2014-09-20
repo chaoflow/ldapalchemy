@@ -11,5 +11,6 @@ __pycache__
 /bin/
 /env
 /venv*
+/parts/
 /result
 /result-*

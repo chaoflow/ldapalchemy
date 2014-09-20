@@ -47,6 +47,8 @@ setup(
     zip_safe=False,
     install_requires=[
         'setuptools',
+        'plumbum',
+        'cffi',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
