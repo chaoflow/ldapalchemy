@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from libldap import ffi, libldap
+
+
 from . import exceptions as excs
 
 from .exceptions import *
-from .libldap import ffi, libldap
 
 
 ERRORS = dict((exc.code, exc) for exc in

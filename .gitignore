@@ -1,6 +1,7 @@
 *.egg-info
 *.egg-link
 *.py[co]
+*.so
 __pycache__
 /.cache
 /.env
