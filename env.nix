@@ -5,8 +5,6 @@ let
       name = "ldapalchemy-dev";
       wheels = with python.wheels;
         [ cffi
-          click
-          colorama
           ipdb
           plumbum
           py
