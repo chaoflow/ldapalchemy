@@ -1,5 +1,5 @@
 Run all tests:
-
-  % make bootstrap-no-nix
-  % make
-
+```
+    % make bootstrap-no-nix
+    % make
+```
